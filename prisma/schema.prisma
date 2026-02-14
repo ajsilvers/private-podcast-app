@@ -1,0 +1,105 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum FeedType {
+  BINGE
+  DRIP
+}
+
+enum SubscriberStatus {
+  ACTIVE
+  REVOKED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  apiKey    String   @unique @default(cuid()) @map("api_key")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  shows     Show[]
+
+  @@map("users")
+}
+
+model Show {
+  id               String    @id @default(cuid())
+  userId           String    @map("user_id")
+  title            String
+  description      String?   @db.Text
+  authorName       String    @map("author_name")
+  authorEmail      String    @map("author_email")
+  coverArtUrl      String?   @map("cover_art_url")
+  feedType         FeedType  @default(DRIP) @map("feed_type")
+  dripIntervalDays Int?      @map("drip_interval_days")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episodes    Episode[]
+  subscribers Subscriber[]
+
+  @@map("shows")
+}
+
+model Episode {
+  id              String    @id @default(cuid())
+  showId          String    @map("show_id")
+  title           String
+  description     String?   @db.Text
+  audioUrl        String    @map("audio_url")
+  imageUrl        String?   @map("image_url")
+  durationSeconds Int       @map("duration_seconds")
+  fileSizeBytes   Int       @map("file_size_bytes")
+  episodeNumber   Int       @map("episode_number")
+  seasonNumber    Int?      @map("season_number")
+  isPublished     Boolean   @default(false) @map("is_published")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  show Show @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@unique([showId, episodeNumber])
+  @@map("episodes")
+}
+
+model Subscriber {
+  id          String           @id @default(cuid())
+  showId      String           @map("show_id")
+  email       String
+  name        String?
+  feedToken   String           @unique @map("feed_token")
+  startDate   DateTime         @default(now()) @map("start_date")
+  status      SubscriberStatus @default(ACTIVE)
+  activatedAt DateTime?        @map("activated_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  show         Show          @relation(fields: [showId], references: [id], onDelete: Cascade)
+  feedRequests FeedRequest[]
+
+  @@unique([showId, email])
+  @@map("subscribers")
+}
+
+model FeedRequest {
+  id           String   @id @default(cuid())
+  subscriberId String   @map("subscriber_id")
+  requestedAt  DateTime @default(now()) @map("requested_at")
+  userAgent    String?  @map("user_agent")
+  ipAddress    String?  @map("ip_address")
+
+  subscriber Subscriber @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+
+  @@index([subscriberId, requestedAt])
+  @@map("feed_requests")
+}
