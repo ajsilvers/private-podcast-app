@@ -42,3 +42,6 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
