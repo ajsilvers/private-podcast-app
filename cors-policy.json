@@ -1,13 +1,12 @@
 [
   {
     "AllowedOrigins": [
+      "https://feeds.launchcastformula.com",
       "http://localhost:3000"
     ],
     "AllowedMethods": [
       "GET",
       "PUT",
-      "POST",
-      "DELETE",
       "HEAD"
     ],
     "AllowedHeaders": [
