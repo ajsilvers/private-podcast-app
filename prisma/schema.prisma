@@ -12,6 +12,7 @@ datasource db {
 enum FeedType {
   BINGE
   DRIP
+  DATED
 }
 
 enum SubscriberStatus {
@@ -41,12 +42,15 @@ model Show {
   coverArtUrl      String?   @map("cover_art_url")
   feedType         FeedType  @default(DRIP) @map("feed_type")
   dripIntervalDays Int?      @map("drip_interval_days")
+  slug                 String   @unique
+  acceptingSubscribers Boolean  @default(true) @map("accepting_subscribers")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   episodes    Episode[]
   subscribers Subscriber[]
+  apiKeys     ApiKeyShow[]
 
   @@map("shows")
 }
@@ -63,12 +67,15 @@ model Episode {
   episodeNumber   Int       @map("episode_number")
   seasonNumber    Int?      @map("season_number")
   isPublished     Boolean   @default(false) @map("is_published")
+  publishedAt     DateTime? @map("published_at")
+  releaseAt       DateTime? @map("release_at") // DATED shows: UTC release instant
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
   show Show @relation(fields: [showId], references: [id], onDelete: Cascade)
 
   @@unique([showId, episodeNumber])
+  @@index([showId, releaseAt])
   @@map("episodes")
 }
 
@@ -81,6 +88,7 @@ model Subscriber {
   startDate   DateTime         @default(now()) @map("start_date")
   status      SubscriberStatus @default(ACTIVE)
   activatedAt DateTime?        @map("activated_at")
+  externalRef String?          @map("external_ref")
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
 
@@ -102,4 +110,27 @@ model FeedRequest {
 
   @@index([subscriberId, requestedAt])
   @@map("feed_requests")
+}
+
+model ApiKey {
+  id         String       @id @default(cuid())
+  name       String
+  prefix     String // first 12 chars, for display
+  keyHash    String       @unique @map("key_hash")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  lastUsedAt DateTime?    @map("last_used_at")
+  revokedAt  DateTime?    @map("revoked_at")
+  shows      ApiKeyShow[]
+
+  @@map("api_keys")
+}
+
+model ApiKeyShow {
+  apiKeyId String @map("api_key_id")
+  showId   String @map("show_id")
+  apiKey   ApiKey @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  show     Show   @relation(fields: [showId], references: [id], onDelete: Cascade)
+
+  @@id([apiKeyId, showId])
+  @@map("api_key_shows")
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
+import { nanoid } from "nanoid";
 
 const CreateShowSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -70,6 +71,7 @@ export async function POST(request: NextRequest) {
     const show = await db.show.create({
       data: {
         userId: user.id,
+        slug: nanoid(10).toLowerCase(), // temporary until Task 6 adds slug input
         title: parsed.data.title,
         description: parsed.data.description,
         authorName: parsed.data.authorName,
