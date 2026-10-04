@@ -5,7 +5,8 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 
 const AddSubscriberSchema = z.object({
-  email: z.string().email("Valid email is required"),
+  // Same normalization as the subscribe API so dashboard and API adds can't diverge by case.
+  email: z.string().trim().toLowerCase().email("Valid email is required"),
   name: z.string().optional(),
   startDate: z.string().optional(),
 });
