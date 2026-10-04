@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { isAuthenticated } from "@/lib/auth";
 
@@ -20,18 +21,18 @@ export default async function DashboardLayout({
             <h1 className="text-xl font-bold text-gray-900">Private Podcast</h1>
           </div>
           <nav className="px-4 space-y-1">
-            <a
+            <Link
               href="/shows"
               className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100"
             >
               Shows
-            </a>
-            <a
+            </Link>
+            <Link
               href="/settings"
               className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-gray-700 hover:bg-gray-100"
             >
               Settings
-            </a>
+            </Link>
           </nav>
         </aside>
 

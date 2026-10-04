@@ -1,12 +1,14 @@
 import { getIronSession, IronSession, SessionOptions } from "iron-session";
 import { cookies } from "next/headers";
+import { createHash, timingSafeEqual } from "node:crypto";
+import { getEnv } from "@/lib/env";
 
 export interface SessionData {
   isAuthenticated: boolean;
 }
 
-export const sessionOptions: SessionOptions = {
-  password: process.env.SESSION_SECRET || "complex_password_at_least_32_characters_long",
+export const sessionOptions = (): SessionOptions => ({
+  password: getEnv().SESSION_SECRET,
   cookieName: "ppa_session",
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",
@@ -14,20 +16,17 @@ export const sessionOptions: SessionOptions = {
     sameSite: "lax",
     maxAge: 60 * 60 * 24 * 7, // 1 week
   },
-};
+});
 
 export async function getSession(): Promise<IronSession<SessionData>> {
   const cookieStore = await cookies();
-  return getIronSession<SessionData>(cookieStore, sessionOptions);
+  return getIronSession<SessionData>(cookieStore, sessionOptions());
 }
 
+const sha256 = (s: string) => createHash("sha256").update(s).digest();
+
 export async function login(password: string): Promise<boolean> {
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) {
-    console.error("ADMIN_PASSWORD not set in environment");
-    return false;
-  }
-  return password === adminPassword;
+  return timingSafeEqual(sha256(password), sha256(getEnv().ADMIN_PASSWORD));
 }
 
 export async function createSession(): Promise<void> {
