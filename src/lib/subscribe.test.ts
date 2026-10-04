@@ -46,6 +46,17 @@ describe("subscribe (real Postgres)", () => {
     expect(rs.filter((r) => r.kind === "ok" && r.created).length).toBe(1);
     expect(await db.subscriber.count({ where: { showId } })).toBe(1);
   });
+  it("stores start_date as UTC even when the DB session timezone is not UTC", async () => {
+    await db.$executeRawUnsafe("SET TIME ZONE 'America/New_York'");
+    try {
+      const before = Date.now();
+      const r = await subscribe({ showId, email: "tz@x.co" });
+      if (r.kind !== "ok") throw new Error("expected ok");
+      expect(Math.abs(r.subscriber.startDate.getTime() - before)).toBeLessThan(60_000);
+    } finally {
+      await db.$executeRawUnsafe("SET TIME ZONE 'UTC'");
+    }
+  });
   it("never reactivates a revoked subscriber", async () => {
     const a = await subscribe({ showId, email: "r@x.co" });
     if (a.kind !== "ok") throw new Error("expected ok");

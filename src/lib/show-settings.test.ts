@@ -34,3 +34,17 @@ describe("suggestSlug", () => {
     expect(ShowSettingsSchema.shape.slug.safeParse(suggestSlug("A".repeat(100))).success).toBe(true);
   });
 });
+
+describe("datedConversionBlockers", () => {
+  it("lists published episodes without a release date", async () => {
+    const { datedConversionBlockers } = await import("./show-settings");
+    const t = new Date("2026-11-01T09:00:00Z");
+    expect(
+      datedConversionBlockers([
+        { episodeNumber: 1, isPublished: true, releaseAt: t },
+        { episodeNumber: 2, isPublished: true, releaseAt: null },
+        { episodeNumber: 3, isPublished: false, releaseAt: null },
+      ])
+    ).toEqual([2]);
+  });
+});

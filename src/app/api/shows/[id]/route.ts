@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { ShowPatchSchema, lockedFieldViolations } from "@/lib/show-settings";
+import { ShowPatchSchema, lockedFieldViolations, datedConversionBlockers } from "@/lib/show-settings";
 
 export async function GET(
   request: NextRequest,
@@ -79,13 +79,29 @@ export async function PATCH(
       return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
     }
 
-    const current = await db.show.findUnique({ where: { id }, include: { _count: { select: { subscribers: true } } } });
+    const current = await db.show.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { subscribers: true } },
+        episodes: { select: { episodeNumber: true, isPublished: true, releaseAt: true } },
+      },
+    });
     if (!current) {
       return NextResponse.json({ error: "Show not found" }, { status: 404 });
     }
     const locked = lockedFieldViolations(parsed.data, current, current._count.subscribers);
     if (locked.length > 0) {
       return NextResponse.json({ error: "locked_after_subscribers", fields: locked }, { status: 409 });
+    }
+
+    if (parsed.data.feedType === "DATED" && current.feedType !== "DATED") {
+      const missing = datedConversionBlockers(current.episodes);
+      if (missing.length > 0) {
+        return NextResponse.json(
+          { error: "Set a release date on published episodes first, or unpublish them", episodes: missing },
+          { status: 400 }
+        );
+      }
     }
 
     // Only fields present in the request change; omitted values are kept.

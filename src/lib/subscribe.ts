@@ -25,10 +25,13 @@ export async function subscribe(input: {
   externalRef?: string | null;
 }): Promise<SubscribeResult> {
   const email = normalizeEmail(input.email);
+  // Timestamps are bound as parameters, not now(): the columns are TIMESTAMP without time zone,
+  // and now() would be stored in the DB session's TimeZone instead of UTC.
+  const now = new Date();
   const inserted = await db.$queryRaw<{ id: string }[]>`
     INSERT INTO subscribers (id, show_id, email, name, feed_token, external_ref, start_date, status, created_at, updated_at)
     VALUES (${nanoid(25)}, ${input.showId}, ${email}, ${input.name ?? null}, ${nanoid(32)}, ${input.externalRef ?? null},
-            now(), 'ACTIVE', now(), now())
+            ${now}, 'ACTIVE', ${now}, ${now})
     ON CONFLICT (show_id, email) DO NOTHING
     RETURNING id`;
 

@@ -40,3 +40,13 @@ export function suggestSlug(title: string): string {
     .slice(0, 64)
     .replace(/^-+|-+$/g, "");
 }
+
+/**
+ * Episode numbers that would vanish from feeds if the show became DATED:
+ * published, but with no release date (DATED never releases those).
+ */
+export function datedConversionBlockers(
+  episodes: { episodeNumber: number; isPublished: boolean; releaseAt: Date | null }[]
+): number[] {
+  return episodes.filter((ep) => ep.isPublished && !ep.releaseAt).map((ep) => ep.episodeNumber);
+}
