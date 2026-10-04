@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
+import { isAllowedAudio } from "@/lib/episode-rules";
 import { getUploadUrl, generateStorageKey, getPublicUrl, getContentType } from "@/lib/r2";
 
 export async function POST(request: NextRequest) {
@@ -19,6 +20,9 @@ export async function POST(request: NextRequest) {
     }
 
     const fileType = type === "image" ? "image" : "audio";
+    if (fileType === "audio" && !isAllowedAudio(filename)) {
+      return NextResponse.json({ error: "Audio must be an MP3 file" }, { status: 400 });
+    }
     const contentType = getContentType(filename);
     const key = generateStorageKey(fileType, filename.split(".").pop() ?? "mp3");
 

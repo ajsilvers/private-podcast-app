@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toUtcInputValue, fromUtcInputValue } from "@/lib/episode-rules";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,9 @@ interface EpisodeFormProps {
     fileSizeBytes: number;
     seasonNumber: number | null;
     isPublished: boolean;
+    releaseAt?: string | null;
   };
+  feedType?: string;
   onSubmit: (data: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }
@@ -53,7 +56,9 @@ async function uploadFile(
   return { publicUrl };
 }
 
-export function EpisodeForm({ showId, episode, onSubmit, onCancel }: EpisodeFormProps) {
+export function EpisodeForm({ showId, episode, feedType, onSubmit, onCancel }: EpisodeFormProps) {
+  const isDated = feedType === "DATED";
+  const [releaseInput, setReleaseInput] = useState(toUtcInputValue(episode?.releaseAt));
   const [loading, setLoading] = useState(false);
   const [uploadingAudio, setUploadingAudio] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -127,9 +132,8 @@ export function EpisodeForm({ showId, episode, onSubmit, onCancel }: EpisodeForm
       imageUrl: imageUrl || undefined,
       durationSeconds: duration,
       fileSizeBytes: fileSize,
+      ...(isDated ? { releaseAt: fromUtcInputValue(releaseInput) } : {}),
     };
-    
-    console.log("Submitting episode data:", submitData);
     
     setLoading(true);
     await onSubmit(submitData);
@@ -183,7 +187,7 @@ export function EpisodeForm({ showId, episode, onSubmit, onCancel }: EpisodeForm
                 <div>
                   <Input
                     type="file"
-                    accept="audio/*"
+                    accept="audio/mpeg,.mp3"
                     onChange={handleAudioUpload}
                     disabled={uploadingAudio}
                   />
@@ -261,6 +265,22 @@ export function EpisodeForm({ showId, episode, onSubmit, onCancel }: EpisodeForm
               </select>
             </div>
           </div>
+
+          {isDated && (
+            <div className="space-y-2">
+              <Label htmlFor="releaseAt">Release (UTC) {formData.isPublished ? "*" : ""}</Label>
+              <Input
+                id="releaseAt"
+                type="datetime-local"
+                value={releaseInput}
+                required={formData.isPublished}
+                onChange={(e) => setReleaseInput(e.target.value)}
+              />
+              <p className="text-xs text-gray-500">
+                Every subscriber gets this episode at this time, in UTC (not your local time).
+              </p>
+            </div>
+          )}
 
           <div className="flex gap-2">
             <Button type="submit" disabled={loading || uploadingAudio || uploadingImage}>

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatUtc } from "@/lib/episode-rules";
 import { EpisodeForm } from "@/components/forms/episode-form";
 import { ShowForm } from "@/components/forms/show-form";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -48,6 +49,7 @@ interface Episode {
   fileSizeBytes: number;
   seasonNumber: number | null;
   isPublished: boolean;
+  releaseAt: string | null;
 }
 
 interface Stats {
@@ -160,6 +162,11 @@ function SeasonPanel({
                   <Badge variant={episode.isPublished ? "default" : "secondary"}>
                     {episode.isPublished ? "Published" : "Draft"}
                   </Badge>
+                  {feedType === "DATED" && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      {episode.releaseAt ? formatUtc(episode.releaseAt) : "No release date"}
+                    </div>
+                  )}
                 </TableCell>
                 <TableCell className="text-center">
                   <span className="text-sm font-medium">{getAccessCount(episode)}</span>
@@ -710,7 +717,9 @@ export default function ShowDetailPage({ params }: { params: Promise<{ id: strin
               fileSizeBytes: editingEpisode.fileSizeBytes,
               seasonNumber: editingEpisode.seasonNumber,
               isPublished: editingEpisode.isPublished,
+              releaseAt: editingEpisode.releaseAt,
             } : undefined}
+            feedType={show.feedType}
             onSubmit={handleEpisodeSubmit}
             onCancel={() => {
               setEpisodeDialog(false);

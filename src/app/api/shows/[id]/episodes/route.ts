@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { z } from "zod";
+import { publicationFields, ReleaseAtSchema } from "@/lib/episode-rules";
 
 const CreateEpisodeSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -12,6 +13,7 @@ const CreateEpisodeSchema = z.object({
   fileSizeBytes: z.number().int().min(1),
   seasonNumber: z.number().int().optional().nullable(),
   isPublished: z.boolean().optional(),
+  releaseAt: ReleaseAtSchema,
 });
 
 export async function GET(
@@ -50,13 +52,25 @@ export async function POST(
     const { id } = await params;
     const body = await request.json();
     
-    console.log("Create episode body:", JSON.stringify(body, null, 2));
-    
     const parsed = CreateEpisodeSchema.safeParse(body);
     
     if (!parsed.success) {
       console.error("Validation error:", parsed.error.issues);
       return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
+    }
+
+    const show = await db.show.findUnique({ where: { id }, select: { feedType: true } });
+    if (!show) {
+      return NextResponse.json({ error: "Show not found" }, { status: 404 });
+    }
+    const publication = publicationFields({
+      feedType: show.feedType,
+      existing: null,
+      isPublished: parsed.data.isPublished ?? false,
+      releaseAt: parsed.data.releaseAt,
+    });
+    if (!publication.ok) {
+      return NextResponse.json({ error: publication.error }, { status: 400 });
     }
 
     // Get next episode number
@@ -79,6 +93,7 @@ export async function POST(
         episodeNumber,
         seasonNumber: parsed.data.seasonNumber || null,
         isPublished: parsed.data.isPublished ?? false,
+        ...publication.data,
       },
     });
 

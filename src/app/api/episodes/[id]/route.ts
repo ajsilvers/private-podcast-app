@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { publicationFields, ReleaseAtSchema } from "@/lib/episode-rules";
 
 export async function PATCH(
   request: NextRequest,
@@ -15,7 +16,23 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    console.log("Episode update body:", JSON.stringify(body, null, 2));
+    const existing = await db.episode.findUnique({ where: { id }, include: { show: { select: { feedType: true } } } });
+    if (!existing) {
+      return NextResponse.json({ error: "Episode not found" }, { status: 404 });
+    }
+    const releaseAt = ReleaseAtSchema.safeParse(body.releaseAt);
+    if (!releaseAt.success) {
+      return NextResponse.json({ error: "releaseAt must be a UTC timestamp ending in Z" }, { status: 400 });
+    }
+    const publication = publicationFields({
+      feedType: existing.show.feedType,
+      existing,
+      isPublished: body.isPublished ?? existing.isPublished,
+      releaseAt: releaseAt.data,
+    });
+    if (!publication.ok) {
+      return NextResponse.json({ error: publication.error }, { status: 400 });
+    }
 
     const updateData: Record<string, unknown> = {
       title: body.title,
@@ -24,6 +41,7 @@ export async function PATCH(
       durationSeconds: body.durationSeconds,
       fileSizeBytes: body.fileSizeBytes,
       isPublished: body.isPublished,
+      ...publication.data,
     };
 
     // Only include imageUrl if it has a value

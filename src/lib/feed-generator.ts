@@ -1,5 +1,5 @@
-import { format, addDays, subDays, isBefore, startOfDay, isSameDay } from "date-fns";
 import type { Show, Episode, Subscriber, FeedType } from "@prisma/client";
+import { episodeReleaseAt, isReleased } from "@/lib/release-schedule";
 
 type ShowWithEpisodes = Show & { episodes: Episode[] };
 
@@ -9,98 +9,39 @@ type ShowWithEpisodes = Show & { episodes: Episode[] };
 export function generateFeed(
   show: ShowWithEpisodes,
   subscriber: Subscriber,
-  baseUrl: string
+  baseUrl: string,
+  now: Date = new Date()
 ): string {
-  const now = new Date();
-  const publishedEpisodes = show.episodes
+  const items = show.episodes
     .filter((ep) => ep.isPublished)
-    .sort((a, b) => a.episodeNumber - b.episodeNumber);
-
-  const visibleEpisodes = publishedEpisodes.filter((ep) =>
-    isEpisodeVisible(ep, show, subscriber, now)
-  );
-
-  const items = visibleEpisodes.map((ep) =>
-    generateItemXml(ep, show, subscriber, baseUrl)
-  );
+    .filter(() => now.getTime() >= subscriber.startDate.getTime())
+    .filter((ep) => isReleased(ep, show, subscriber.startDate, now))
+    .sort((a, b) => a.episodeNumber - b.episodeNumber)
+    .map((ep) => generateItemXml(ep, show, subscriber, pubDateFor(ep, show, subscriber)));
 
   return generateChannelXml(show, items.join("\n"), baseUrl);
 }
 
-/**
- * Determine if an episode should be visible in a subscriber's feed
- */
-export function isEpisodeVisible(
-  episode: Episode,
-  show: Show,
-  subscriber: Subscriber,
-  now: Date
-): boolean {
-  switch (show.feedType) {
-    case "BINGE":
-      // All published episodes immediately visible
-      return true;
-
-    case "DRIP": {
-      // Episode N visible if: now >= startDate + ((N-1) * interval)
-      const intervalDays = show.dripIntervalDays ?? 1;
-      const daysUntilRelease = (episode.episodeNumber - 1) * intervalDays;
-      const releaseDate = addDays(startOfDay(subscriber.startDate), daysUntilRelease);
-      const today = startOfDay(now);
-      return isBefore(releaseDate, today) || isSameDay(releaseDate, today);
-    }
-
-    default:
-      return false;
-  }
+function pubDateFor(ep: Episode, show: Show, sub: Subscriber): Date {
+  if (show.feedType === "BINGE") return ep.publishedAt ?? ep.createdAt;
+  return episodeReleaseAt(ep, show, sub.startDate)!; // non-null: only released episodes reach here
 }
 
-/**
- * Calculate publication date for an episode based on feed type
- */
-export function calculatePubDate(
-  episode: Episode,
-  show: ShowWithEpisodes,
-  subscriber: Subscriber
-): Date {
-  switch (show.feedType) {
-    case "BINGE": {
-      // Episodes dated backwards from start date
-      // Episode 1 = oldest, last episode = start date
-      const totalEpisodes = show.episodes.filter((e) => e.isPublished).length;
-      const daysBack = totalEpisodes - episode.episodeNumber;
-      return subDays(startOfDay(subscriber.startDate), daysBack);
-    }
-
-    case "DRIP": {
-      const intervalDays = show.dripIntervalDays ?? 1;
-      const daysAfterStart = (episode.episodeNumber - 1) * intervalDays;
-      return addDays(startOfDay(subscriber.startDate), daysAfterStart);
-    }
-
-    default:
-      return episode.createdAt;
-  }
+function cdata(s: string): string {
+  return `<![CDATA[${s.replace(/]]>/g, "]]]]><![CDATA[>")}]]>`;
 }
 
 /**
  * Generate the RSS channel (show) XML
  */
-function generateChannelXml(
-  show: Show,
-  itemsXml: string,
-  baseUrl: string
-): string {
-  const feedTypeLabel = show.feedType === "BINGE" ? "complete" : "episodic";
-  
+function generateChannelXml(show: Show, itemsXml: string, baseUrl: string): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" 
-     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
-     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>${escapeXml(show.title)}</title>
-    <description>${escapeXml(show.description ?? "")}</description>
-    <language>en-us</language>
+    <link>${escapeXml(baseUrl)}</link>
+    <description>${cdata(show.description ?? "")}</description>
+    <language>en</language>
     <itunes:author>${escapeXml(show.authorName)}</itunes:author>
     <itunes:owner>
       <itunes:name>${escapeXml(show.authorName)}</itunes:name>
@@ -108,7 +49,7 @@ function generateChannelXml(
     </itunes:owner>
     ${show.coverArtUrl ? `<itunes:image href="${escapeXml(show.coverArtUrl)}"/>` : ""}
     <itunes:explicit>false</itunes:explicit>
-    <itunes:type>${feedTypeLabel}</itunes:type>
+    <itunes:type>serial</itunes:type>
 ${itemsXml}
   </channel>
 </rss>`;
@@ -117,24 +58,15 @@ ${itemsXml}
 /**
  * Generate RSS item (episode) XML
  */
-function generateItemXml(
-  episode: Episode,
-  show: ShowWithEpisodes,
-  subscriber: Subscriber,
-  baseUrl: string
-): string {
-  const pubDate = calculatePubDate(episode, show, subscriber);
-  const guid = `${subscriber.feedToken}-${episode.id}`;
+function generateItemXml(episode: Episode, show: Show, subscriber: Subscriber, pubDate: Date): string {
   const episodeImage = episode.imageUrl || show.coverArtUrl;
 
   return `    <item>
       <title>${escapeXml(episode.title)}</title>
-      <description><![CDATA[${episode.description ?? ""}]]></description>
-      <enclosure url="${episode.audioUrl}" 
-                 length="${episode.fileSizeBytes}" 
-                 type="audio/mpeg"/>
-      <guid isPermaLink="false">${guid}</guid>
-      <pubDate>${formatRfc2822(pubDate)}</pubDate>
+      <description>${cdata(episode.description ?? "")}</description>
+      <enclosure url="${escapeXml(episode.audioUrl)}" length="${episode.fileSizeBytes}" type="audio/mpeg"/>
+      <guid isPermaLink="false">${escapeXml(`${subscriber.feedToken}-${episode.id}`)}</guid>
+      <pubDate>${pubDate.toUTCString()}</pubDate>
       <itunes:duration>${formatDuration(episode.durationSeconds)}</itunes:duration>
       <itunes:episode>${episode.episodeNumber}</itunes:episode>
       ${episode.seasonNumber ? `<itunes:season>${episode.seasonNumber}</itunes:season>` : ""}
@@ -152,13 +84,6 @@ export function escapeXml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
-}
-
-/**
- * Format date as RFC 2822 for RSS pubDate
- */
-export function formatRfc2822(date: Date): string {
-  return format(date, "EEE, dd MMM yyyy HH:mm:ss xx");
 }
 
 /**
@@ -184,6 +109,8 @@ export function getFeedTypeLabel(feedType: FeedType): string {
       return "Binge";
     case "DRIP":
       return "Drip";
+    case "DATED":
+      return "Dated";
     default:
       return feedType;
   }
