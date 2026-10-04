@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { suggestSlug } from "@/lib/show-settings";
 
 interface Show {
   id: string;
@@ -15,6 +16,8 @@ interface Show {
   authorEmail: string;
   feedType: string;
   dripIntervalDays: number | null;
+  slug?: string;
+  acceptingSubscribers?: boolean;
   _count?: { episodes: number; subscribers: number };
 }
 
@@ -35,7 +38,12 @@ export function ShowForm({ show, onSubmit, onCancel }: ShowFormProps) {
     authorEmail: show?.authorEmail || "",
     feedType: show?.feedType || "DRIP",
     dripIntervalDays: show?.dripIntervalDays || 1,
+    slug: show?.slug || "",
+    acceptingSubscribers: show?.acceptingSubscribers ?? true,
   });
+  const [slugTouched, setSlugTouched] = useState(Boolean(show?.slug));
+  // Slug and cadence are locked once anyone has subscribed (the API enforces this too).
+  const locked = (show?._count?.subscribers ?? 0) > 0;
 
   async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -79,7 +87,13 @@ export function ShowForm({ show, onSubmit, onCancel }: ShowFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await onSubmit({ ...formData, coverArtUrl: coverArtUrl || null });
+    const { dripIntervalDays, slug, feedType, ...rest } = formData;
+    await onSubmit({
+      ...rest,
+      coverArtUrl: coverArtUrl || "",
+      // Locked fields are omitted entirely once a show has subscribers.
+      ...(locked ? {} : { slug, feedType, ...(feedType === "DRIP" ? { dripIntervalDays } : {}) }),
+    });
     setLoading(false);
   }
 
@@ -95,7 +109,13 @@ export function ShowForm({ show, onSubmit, onCancel }: ShowFormProps) {
             <Input
               id="title"
               value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  title: e.target.value,
+                  slug: slugTouched ? formData.slug : suggestSlug(e.target.value),
+                })
+              }
               required
             />
           </div>
@@ -171,13 +191,18 @@ export function ShowForm({ show, onSubmit, onCancel }: ShowFormProps) {
             <Label htmlFor="feedType">Feed Type *</Label>
             <select
               id="feedType"
+              disabled={locked}
               className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
               value={formData.feedType}
               onChange={(e) => setFormData({ ...formData, feedType: e.target.value })}
             >
               <option value="BINGE">Binge - All episodes available immediately</option>
-              <option value="DRIP">Drip - Episodes release on schedule</option>
+              <option value="DRIP">Drip - Episodes release on an interval after each signup</option>
+              <option value="DATED">Dated - Each episode releases at a fixed UTC date for everyone</option>
             </select>
+            {locked && (
+              <p className="text-xs text-gray-500">Feed type, interval and slug are locked because this show has subscribers.</p>
+            )}
           </div>
 
           {formData.feedType === "DRIP" && (
@@ -185,17 +210,46 @@ export function ShowForm({ show, onSubmit, onCancel }: ShowFormProps) {
               <Label htmlFor="dripInterval">Drip Interval</Label>
               <select
                 id="dripInterval"
+                disabled={locked}
                 className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
                 value={formData.dripIntervalDays}
                 onChange={(e) => setFormData({ ...formData, dripIntervalDays: parseInt(e.target.value) })}
               >
-                <option value={1}>Daily</option>
-                <option value={2}>Every 2 days</option>
-                <option value={3}>Every 3 days</option>
-                <option value={7}>Weekly</option>
+                {Array.from({ length: 30 }, (_, i) => i + 1).map((days) => (
+                  <option key={days} value={days}>
+                    {days === 1 ? "Daily" : days === 7 ? "Weekly" : `Every ${days} days`}
+                  </option>
+                ))}
               </select>
             </div>
           )}
+
+          <div className="space-y-2">
+            <Label htmlFor="slug">Feed slug *</Label>
+            <Input
+              id="slug"
+              value={formData.slug}
+              disabled={locked}
+              required
+              pattern="[a-z0-9]+(-[a-z0-9]+)*"
+              onChange={(e) => {
+                setSlugTouched(true);
+                setFormData({ ...formData, slug: e.target.value });
+              }}
+            />
+            <p className="text-xs text-gray-500">
+              Sites pass this as <code>feed</code> when subscribing someone. Lowercase letters, numbers and hyphens.
+            </p>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={formData.acceptingSubscribers}
+              onChange={(e) => setFormData({ ...formData, acceptingSubscribers: e.target.checked })}
+            />
+            Accepting new subscribers
+          </label>
 
           <div className="flex gap-2">
             <Button type="submit" disabled={loading || uploading}>

@@ -1,18 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { z } from "zod";
-import { nanoid } from "nanoid";
+import { Prisma } from "@prisma/client";
+import { ShowSettingsSchema } from "@/lib/show-settings";
 
-const CreateShowSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  description: z.string().optional(),
-  authorName: z.string().min(1, "Author name is required"),
-  authorEmail: z.string().email("Valid email is required"),
-  coverArtUrl: z.string().url().optional().or(z.literal("")),
-  feedType: z.enum(["BINGE", "DRIP"]),
-  dripIntervalDays: z.number().int().min(1).max(7).optional(),
-});
 
 export async function GET() {
   try {
@@ -51,8 +42,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const parsed = CreateShowSchema.safeParse(body);
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Malformed JSON" }, { status: 400 });
+    }
+    const parsed = ShowSettingsSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
     }
@@ -68,19 +64,28 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const show = await db.show.create({
-      data: {
-        userId: user.id,
-        slug: nanoid(10).toLowerCase(), // temporary until Task 6 adds slug input
-        title: parsed.data.title,
-        description: parsed.data.description,
-        authorName: parsed.data.authorName,
-        authorEmail: parsed.data.authorEmail,
-        coverArtUrl: parsed.data.coverArtUrl || null,
-        feedType: parsed.data.feedType,
-        dripIntervalDays: parsed.data.feedType === "DRIP" ? (parsed.data.dripIntervalDays ?? 1) : null,
-      },
-    });
+    let show;
+    try {
+      show = await db.show.create({
+        data: {
+          userId: user.id,
+          slug: parsed.data.slug,
+          acceptingSubscribers: parsed.data.acceptingSubscribers ?? true,
+          title: parsed.data.title,
+          description: parsed.data.description,
+          authorName: parsed.data.authorName,
+          authorEmail: parsed.data.authorEmail,
+          coverArtUrl: parsed.data.coverArtUrl || null,
+          feedType: parsed.data.feedType,
+          dripIntervalDays: parsed.data.feedType === "DRIP" ? (parsed.data.dripIntervalDays ?? 1) : null,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return NextResponse.json({ error: "slug_taken" }, { status: 409 });
+      }
+      throw error;
+    }
 
     return NextResponse.json({ show }, { status: 201 });
   } catch (error) {

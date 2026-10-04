@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { Prisma } from "@prisma/client";
+import { ShowPatchSchema, lockedFieldViolations } from "@/lib/show-settings";
 
 export async function GET(
   request: NextRequest,
@@ -66,20 +68,42 @@ export async function PATCH(
     }
 
     const { id } = await params;
-    const body = await request.json();
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: "Malformed JSON" }, { status: 400 });
+    }
+    const parsed = ShowPatchSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues }, { status: 400 });
+    }
 
-    const show = await db.show.update({
-      where: { id },
-      data: {
-        title: body.title,
-        description: body.description,
-        authorName: body.authorName,
-        authorEmail: body.authorEmail,
-        coverArtUrl: body.coverArtUrl || null,
-        feedType: body.feedType,
-        dripIntervalDays: body.feedType === "DRIP" ? body.dripIntervalDays : null,
-      },
-    });
+    const current = await db.show.findUnique({ where: { id }, include: { _count: { select: { subscribers: true } } } });
+    if (!current) {
+      return NextResponse.json({ error: "Show not found" }, { status: 404 });
+    }
+    const locked = lockedFieldViolations(parsed.data, current, current._count.subscribers);
+    if (locked.length > 0) {
+      return NextResponse.json({ error: "locked_after_subscribers", fields: locked }, { status: 409 });
+    }
+
+    // Only fields present in the request change; omitted values are kept.
+    const data: Prisma.ShowUpdateInput = { ...parsed.data };
+    if (parsed.data.coverArtUrl !== undefined) data.coverArtUrl = parsed.data.coverArtUrl || null;
+    const feedType = parsed.data.feedType ?? current.feedType;
+    if (feedType !== "DRIP") data.dripIntervalDays = null;
+    else if (parsed.data.dripIntervalDays === undefined && current.dripIntervalDays === null) data.dripIntervalDays = 1;
+
+    let show;
+    try {
+      show = await db.show.update({ where: { id }, data });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        return NextResponse.json({ error: "slug_taken" }, { status: 409 });
+      }
+      throw error;
+    }
 
     return NextResponse.json({ show });
   } catch (error) {
