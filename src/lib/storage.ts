@@ -2,18 +2,22 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { nanoid } from "nanoid";
 
-// Configure R2 client (S3-compatible)
-const r2 = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT,
+// Bunny Storage through its S3-compatible API (storage zone created with S3 enabled).
+const client = new S3Client({
+  region: process.env.STORAGE_REGION,
+  endpoint: process.env.STORAGE_ENDPOINT,
+  forcePathStyle: true,
+  // The SDK otherwise signs a CRC32 checksum into presigned PUTs; Bunny only supports SHA-256.
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
   credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    accessKeyId: process.env.STORAGE_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.STORAGE_SECRET_ACCESS_KEY!,
   },
 });
 
-const BUCKET = process.env.R2_BUCKET!;
-const PUBLIC_URL = process.env.R2_PUBLIC_URL!;
+const BUCKET = process.env.STORAGE_BUCKET!;
+const PUBLIC_URL = (process.env.STORAGE_PUBLIC_URL ?? "").replace(/\/+$/, "");
 
 /**
  * Generate a presigned URL for uploading a file
@@ -28,7 +32,7 @@ export async function getUploadUrl(
     Key: key,
     ContentType: contentType,
   });
-  return getSignedUrl(r2, command, { expiresIn });
+  return getSignedUrl(client, command, { expiresIn });
 }
 
 /**
@@ -39,14 +43,14 @@ export function getPublicUrl(key: string): string {
 }
 
 /**
- * Delete a file from R2
+ * Delete a file from storage
  */
 export async function deleteFile(key: string): Promise<void> {
   const command = new DeleteObjectCommand({
     Bucket: BUCKET,
     Key: key,
   });
-  await r2.send(command);
+  await client.send(command);
 }
 
 /**

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { isAllowedAudio } from "@/lib/episode-rules";
-import { getUploadUrl, generateStorageKey, getPublicUrl, getContentType } from "@/lib/r2";
+import { getUploadUrl, generateStorageKey, getPublicUrl, getContentType } from "@/lib/storage";
 
 export async function POST(request: NextRequest) {
   try {
