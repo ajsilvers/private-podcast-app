@@ -3,7 +3,9 @@
 Target: **Vercel** (Next.js, Node runtime) + **Neon** Postgres + **Bunny** (Storage + CDN) for audio and artwork. DNS for `launchcastformula.com` is on **Netlify**.
 App at `https://feeds.launchcastformula.com`, media at `https://media.launchcastformula.com`.
 
-Nothing here has been run yet. Each step needs AJ's go-ahead because it spends money, changes DNS or deploys.
+**Live since 2026-10-13.** Vercel project `private-podcast-app` (team `ajsilvers-projects`, Git-connected: every push to `main` deploys production). Neon was added through Vercel Storage. The project's Build Command override is `prisma migrate deploy && prisma generate && next build`, so migrations apply on each deploy using `DATABASE_URL_UNPOOLED` from the Neon integration. `STORAGE_PUBLIC_URL` is temporarily `https://launchcast-media.b-cdn.net` until Bunny accepts the `media.` custom hostname; switch it and redeploy before uploading real episodes.
+
+Each step below needs AJ's go-ahead because it spends money, changes DNS or deploys.
 
 ## Environment variables
 
